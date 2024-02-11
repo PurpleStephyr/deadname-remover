@@ -31,7 +31,6 @@ class Main():
         self.names = self.args.names.split(',')
         self.deadnames = self.args.deadnames.split(',')
         self.deadname_re = '(' + '|'.join(re.escape(deadname) for deadname in self.deadnames) + ')'
-        print(self.deadname_re)
         self.author = subprocess.check_output(['git', 'config', 'user.name']).decode()
         self.email = subprocess.check_output(['git', 'config', 'user.email']).decode()
 
@@ -45,11 +44,9 @@ class Main():
             return 1
 
         branch = subprocess.check_output(['git', 'branch', '--show-current']).decode().strip()
-        print(branch)
         new_branch = f'deadname-remover/{branch if branch != "master" else "main"}'
         commit_shas = subprocess.check_output(['git', 'log', '--format=format:%H']).decode().splitlines()
         commit_shas.reverse()
-        print(commit_shas)
 
         for i, commit_sha in enumerate(commit_shas):
             show_output = subprocess.check_output(['git', 'show', commit_sha]).decode()
@@ -66,7 +63,7 @@ class Main():
                 subprocess.check_output(['git', 'cherry-pick', commit_shas[i]])
             except subprocess.CalledProcessError as e:
                 _ = input("cherry-pick failed - resolve, run 'git cherry-pick --continue', and press <Enter> to continue")
-            show_output = subprocess.check_output(['git', 'show', commit_sha]).decode()
+            show_output = subprocess.check_output(['git', 'show', commit_shas[i]]).decode()
             if any(deadname.lower() in show_output.lower() for deadname in self.deadnames):
                 self.remove_deadname_from_last_commit(show_output)
 
@@ -76,17 +73,17 @@ class Main():
                 for file in subprocess.check_output(['git', 'grep', '--name-only', '-i', deadname]).decode().splitlines():
                     if not self.args.case_sensitive:
                         # replaces lowercase with lowercase, uppercase with uppercase, any other case with name case
-                        subprocess.check_output(['sed', '-i', f's/{deadname}/{self.names[j]}/g'])
-                        subprocess.check_output(['sed', '-i', f's/{deadname.lower()}/{self.names[j].lower()}/g'])
-                        subprocess.check_output(['sed', '-i', f's/{deadname.upper()}/{self.names[j].upper()}/g'])
-                    subprocess.check_output(['sed', '-i', f's/{deadname}/{self.names[j]}/Ig']) # sed 'I' option matches any case
+                        subprocess.check_output(['sed', '-i', f's/{deadname}/{self.names[j]}/g', file])
+                        subprocess.check_output(['sed', '-i', f's/{deadname.lower()}/{self.names[j].lower()}/g', file])
+                        subprocess.check_output(['sed', '-i', f's/{deadname.upper()}/{self.names[j].upper()}/g', file])
+                    subprocess.check_output(['sed', '-i', f's/{deadname}/{self.names[j]}/Ig', file]) # sed 'I' option matches any case
             except subprocess.CalledProcessError as _:
                 # git grep returns failure if pattern not found
                 pass
-        if re.search(r'^Author:.*' + self.deadname_re, show_output, flags=re.MULTILINE):
+        m = re.search(r'^Author:.*' + self.deadname_re, show_output, flags=re.MULTILINE)
+        if m:
             author_opts = [f'--author={self.author} <{self.email}>']
         else:
-            print(f"author did not match:\n{show_output}")
             author_opts = []
         message = subprocess.check_output(['git', 'log', '-1', "--format=format:%B"]).decode()
         for j, deadname in enumerate(self.deadnames):
